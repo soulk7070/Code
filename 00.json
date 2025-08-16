@@ -1,0 +1,539 @@
+{
+  "name": "Veo2 Batch Processing Workflow", 
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger-1",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID", 
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "prompts",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "PENDING"
+            }
+          ]
+        },
+        "options": {
+          "limit": 1,
+          "returnAllMatches": false
+        }
+      },
+      "id": "sheets-read-pending",
+      "name": "Read Pending Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "2", 
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-batches-1",
+      "name": "Split In Batches", 
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const items = $input.all();\nif (items.length === 0) {\n  $execution.stop();\n  return [];\n}\n\nconst row = items[0].json;\n\n// Validasi prompt tidak kosong\nif (!row.prompt || row.prompt.trim() === '') {\n  throw new Error('Prompt kosong atau tidak valid');\n}\n\nreturn [{\n  // Data untuk Veo2 API\n  prompt: row.prompt.trim(),\n  aspectRatio: 'landscape',\n  durationSeconds: 8,\n  \n  // Metadata untuk update nanti \n  rowId: row.id,\n  sheetRowNumber: row.rowNumber || null,\n  originalRow: row\n}];"
+      },
+      "id": "build-payload-1",
+      "name": "BuildPayload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "requestMethod": "POST",
+        "url": "=https://{{ $env.VERTEX_LOCATION || 'us-central1' }}-aiplatform.googleapis.com/v1/projects/{{ $env.VERTEX_PROJECT }}/locations/{{ $env.VERTEX_LOCATION || 'us-central1' }}/publishers/google/models/veo-2:generateVideo",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonParameters": "{\n  \"prompt\": \"{{ $json.prompt }}\",\n  \"config\": {\n    \"aspectRatio\": \"{{ $json.aspectRatio }}\",\n    \"durationSeconds\": {{ $json.durationSeconds }}\n  }\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "veo2-create-1",
+      "name": "Veo2 - Create",
+      "type": "n8n-nodes-base.httpRequest", 
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        300
+      ],
+      "credentials": {
+        "googleServiceAccount": {
+          "id": "3",
+          "name": "Google Service Account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "operation_id", 
+              "value": "={{ $json.name }}"
+            },
+            {
+              "name": "rowId",
+              "value": "={{ $node['BuildPayload'].json.rowId }}"
+            },
+            {
+              "name": "prompt",
+              "value": "={{ $node['BuildPayload'].json.prompt }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "keep-operation-id",
+      "name": "Keep OpID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 15,
+        "unit": "seconds"
+      },
+      "id": "wait-initial",
+      "name": "Wait 15s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "url": "=https://{{ $env.VERTEX_LOCATION || 'us-central1' }}-aiplatform.googleapis.com/v1/{{ $json.operation_id }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "veo2-check-status",
+      "name": "Veo2 - Check Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        300
+      ],
+      "credentials": {
+        "googleServiceAccount": {
+          "id": "3",
+          "name": "Google Service Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-done",
+              "leftValue": "={{ $json.done }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-done-check",
+      "name": "Done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const items = $input.all();\nconst operation = items[0].json;\n\n// Extract output URI dari berbagai kemungkinan field\nconst uri = operation.response?.videoUri || \n           operation.response?.outputUri || \n           operation.response?.gcsUri || \n           operation.response?.resultUri ||\n           operation.response?.generatedVideo?.uri || '';\n\n// Cek jika ada error\nif (operation.error) {\n  throw new Error(`Veo2 Error: ${operation.error.message || 'Unknown error'}`);\n}\n\nif (!uri) {\n  console.log('No URI found in response:', JSON.stringify(operation.response, null, 2));\n}\n\nreturn [{\n  output_link: uri,\n  rowId: $node['Keep OpID'].json.rowId,\n  operation_status: operation.done ? 'SUCCESS' : 'PROCESSING',\n  full_response: operation.response\n}];"
+      },
+      "id": "pick-result",
+      "name": "PickResult",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "prompts", 
+          "mode": "name"
+        },
+        "columnToMatchOn": "id",
+        "valueToMatchOn": "={{ $json.rowId }}",
+        "fieldsUi": {
+          "values": [
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.operation_status }}"
+            },
+            {
+              "fieldId": "operation_id", 
+              "fieldValue": "={{ $node['Keep OpID'].json.operation_id }}"
+            },
+            {
+              "fieldId": "output_link",
+              "fieldValue": "={{ $json.output_link }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "sheets-update-success",
+      "name": "Update Sheet - Success",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        2440,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "2",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 180,
+        "unit": "seconds"
+      },
+      "id": "delay-between-batches",
+      "name": "Delay 3m",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2660,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "prompts",
+          "mode": "name"
+        },
+        "columnToMatchOn": "id", 
+        "valueToMatchOn": "={{ $node['Keep OpID'].json.rowId }}",
+        "fieldsUi": {
+          "values": [
+            {
+              "fieldId": "status",
+              "fieldValue": "ERROR"
+            },
+            {
+              "fieldId": "updated_at", 
+              "fieldValue": "={{ new Date().toISOString() }}"
+            },
+            {
+              "fieldId": "operation_id",
+              "fieldValue": "={{ $node['Keep OpID'].json.operation_id || 'N/A' }}"
+            }
+          ]
+        }
+      },
+      "id": "sheets-update-error",
+      "name": "Update Sheet - Error",
+      "type": "n8n-nodes-base.googleSheets", 
+      "typeVersion": 4,
+      "position": [
+        1340,
+        500
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "2",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Pending Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Pending Rows": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "BuildPayload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BuildPayload": {
+      "main": [
+        [
+          {
+            "node": "Veo2 - Create",
+            "type": "main", 
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Veo2 - Create": {
+      "main": [
+        [
+          {
+            "node": "Keep OpID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Sheet - Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep OpID": {
+      "main": [
+        [
+          {
+            "node": "Wait 15s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 15s": {
+      "main": [
+        [
+          {
+            "node": "Veo2 - Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Veo2 - Check Status": {
+      "main": [
+        [
+          {
+            "node": "Done?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Done?": {
+      "main": [
+        [
+          {
+            "node": "PickResult",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 15s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PickResult": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet - Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sheet - Success": {
+      "main": [
+        [
+          {
+            "node": "Delay 3m",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delay 3m": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": {
+      "errorWorkflow": "",
+      "continueOnFail": false
+    },
+    "timezone": "Asia/Jakarta",
+    "executionTimeout": 3600
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "workflow-2",
+  "tags": [
+    {
+      "id": "tag1", 
+      "name": "veo2"
+    },
+    {
+      "id": "tag2",
+      "name": "batch-processing"
+    }
+  ]
+}
