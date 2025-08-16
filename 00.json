@@ -1,274 +1,101 @@
-{
-  "name": "veo2 - batch-processing",
-  "meta": {
-    "templateCredsSetupCompleted": true,
-    "instanceId": ""
-  },
-  "nodes": [
-    {
-      "id": "ScheduleTrigger",
-      "name": "Schedule Trigger",
-      "type": "n8n-nodes-base.cron",
-      "typeVersion": 1,
-      "position": [260, 300],
-      "parameters": {
-        "triggerTimes": { "item": [{ "mode": "everyMinute" }] }
-      }
-    },
-    {
-      "id": "ReadPendingRows",
-      "name": "Read Pending Rows",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4,
-      "position": [480, 300],
-      "credentials": {
-        "googleSheetsOAuth2Api": { "name": "Google Sheets account" }
-      },
-      "parameters": {
-        "operation": "read",
-        "sheetId": "SHEET_ID_EDIT_ME",
-        "range": "RANGE_EDIT_ME", 
-        "filters": {
-          "returnAll": true
-        }
-      },
-      "notesInFlow": true,
-      "notes": "Pastikan kolom: prompt | status | ratio | duration | link | op_id | error"
-    },
-    {
-      "id": "SplitInBatches",
-      "name": "Split in Batches",
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 2,
-      "position": [700, 300],
-      "parameters": {
-        "batchSize": 1
-      }
-    },
-    {
-      "id": "BuildPayload",
-      "name": "BuildPayload",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 2,
-      "position": [900, 300],
-      "parameters": {
-        "functionCode": "const row = $json;\n// Map kolom Sheet -> payload Veo\nconst prompt = row.prompt || row.Prompt || row['PROMPT'];\n// default ratio & duration bila kosong di Sheet\nconst ratio = row.ratio || 'landscape';\nconst duration = Number(row.duration || 8);\nreturn [{\n  prompt,\n  ratio,\n  duration,\n  sheetRowIndex: row._row || row.row || row['__row'] // dipakai untuk update\n}];"
-      }
-    },
-    {
-      "id": "VeoCreate",
-      "name": "Veo2 - Create",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [1110, 300],
-      "credentials": {
-        "googleApi": { "name": "Google Service Account account" }
-      },
-      "parameters": {
-        "method": "POST",
-        "url": "https://us-central1-aiplatform.googleapis.com/v1/projects/PROJECT_ID_EDIT_ME/locations/us-central1/publishers/google/models/veo-2:generateVideo",
-        "authentication": "googleApi",
-        "sendBinaryData": false,
-        "jsonParameters": true,
-        "options": { "retry": { "maxAttempts": 2 } },
-        "bodyParametersJson": "={\n  \"contents\": [{\"role\": \"user\", \"parts\": [{\"text\": {{$json.prompt}}}]}],\n  \"generationConfig\": {\"response_mime_type\": \"application/json\"},\n  \"videoConfig\": {\"dimension\": \"LANDSCAPE\", \"durationSeconds\": {{$json.duration}}}\n}"
-      },
-      "notesInFlow": true,
-      "notes": "✳️ Periksa URL endpoint & body sesuai API Veo-2 terbaru."
-    },
-    {
-      "id": "KeepOpID",
-      "name": "Keep OpID",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3,
-      "position": [1330, 300],
-      "parameters": {
-        "keepOnlySet": false,
-        "values": {
-          "string": [
-            { "name": "operationName", "value": "={{$json.name || $json.operation || $json.metadata?.operationName}}" }
-          ]
-        }
-      }
-    },
-    {
-      "id": "UpdateError",
-      "name": "Update Sheet - Error",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4,
-      "position": [1110, 470],
-      "credentials": {
-        "googleSheetsOAuth2Api": { "name": "Google Sheets account" }
-      },
-      "parameters": {
-        "operation": "update",
-        "sheetId": "SHEET_ID_EDIT_ME",
-        "updateAllOccurrences": false,
-        "key": "row",
-        "options": {
-          "valueInputMode": "RAW",
-          "additionalFields": {
-            "updateData": [
-              { "column": "status", "value": "ERROR" },
-              { "column": "error", "value": "={{$json.message || $json.error || 'create_failed'}}" }
-            ]
-          }
-        }
-      }
-    },
-    {
-      "id": "Wait15s",
-      "name": "Wait 15s",
-      "type": "n8n-nodes-base.wait",
-      "typeVersion": 1,
-      "position": [1510, 300],
-      "parameters": { "amount": 15, "unit": "seconds" }
-    },
-    {
-      "id": "CheckStatus",
-      "name": "Veo2 - Check Status",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [1690, 300],
-      "credentials": {
-        "googleApi": { "name": "Google Service Account account" }
-      },
-      "parameters": {
-        "method": "GET",
-        "url": "={{`https://us-central1-aiplatform.googleapis.com/v1/${$json.operationName}`}}",
-        "authentication": "googleApi"
-      },
-      "notesInFlow": true,
-      "notes": "Polling long-running operation. `done === true` jika selesai."
-    },
-    {
-      "id": "DoneIf",
-      "name": "Done?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [1870, 300],
-      "parameters": {
-        "conditions": {
-          "boolean": [{ "value1": "={{$json.done === true}}", "operation": "isTrue" }]
-        }
-      }
-    },
-    {
-      "id": "PickResult",
-      "name": "PickResult",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 2,
-      "position": [2050, 260],
-      "parameters": {
-        "functionCode": "const res = $json;\n// Coba beberapa kemungkinan lokasi URL output\nconst uri = res.result?.output?.[0]?.uri || res.response?.candidates?.[0]?.content?.parts?.[0]?.fileData?.fileUri || res.metadata?.outputUri || res.outputUri || res.resultUri;\nreturn [{ resultUri: uri, operationName: res.name || res.operationName }];"
-      }
-    },
-    {
-      "id": "DownloadResult",
-      "name": "Download Result",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [2240, 260],
-      "parameters": {
-        "method": "GET",
-        "url": "={{$json.resultUri}}",
-        "responseFormat": "file",
-        "download": true,
-        "allowUnauthorizedCerts": true
-      }
-    },
-    {
-      "id": "UploadDrive",
-      "name": "Drive - Upload",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [2440, 260],
-      "credentials": {
-        "googleDriveOAuth2Api": { "name": "Google Drive account" }
-      },
-      "parameters": {
-        "operation": "upload",
-        "binaryData": true,
-        "binaryPropertyName": "data",
-        "fileName": "={{$json.operationName || (Date.now() + '.mp4')}}",
-        "parents": [ "FOLDER_ID_EDIT_ME" ]
-      }
-    },
-    {
-      "id": "UpdateSuccess",
-      "name": "Update Sheet - Success",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4,
-      "position": [2640, 260],
-      "credentials": {
-        "googleSheetsOAuth2Api": { "name": "Google Sheets account" }
-      },
-      "parameters": {
-        "operation": "update",
-        "sheetId": "SHEET_ID_EDIT_ME",
-        "key": "row",
-        "options": {
-          "valueInputMode": "RAW",
-          "additionalFields": {
-            "updateData": [
-              { "column": "status", "value": "SUCCESS" },
-              { "column": "link", "value": "={{$json.webViewLink || $json.webContentLink || $json.alternateLink || $json.id ? ('https://drive.google.com/file/d/' + $json.id) : ''}}" },
-              { "column": "op_id", "value": "={{$json.operationName}}"}
-            ]
-          }
-        }
-      }
-    },
-    {
-      "id": "Delay3m",
-      "name": "Delay 3m",
-      "type": "n8n-nodes-base.wait",
-      "typeVersion": 1,
-      "position": [2840, 260],
-      "parameters": { "amount": 3, "unit": "minutes" }
-    },
-    {
-      "id": "LoopNext",
-      "name": "Next Batch",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [3040, 260]
-    },
-    {
-      "id": "LoopBackWait",
-      "name": "Wait 15s (loop)",
-      "type": "n8n-nodes-base.wait",
-      "typeVersion": 1,
-      "position": [2050, 360],
-      "parameters": { "amount": 15, "unit": "seconds" }
-    }
-  ],
-  "connections": {
-    "Schedule Trigger": { "main": [[{ "node": "Read Pending Rows", "type": "main", "index": 0 }]] },
-    "Read Pending Rows": { "main": [[{ "node": "Split in Batches", "type": "main", "index": 0 }]] },
-    "Split in Batches": { "main": [[{ "node": "BuildPayload", "type": "main", "index": 0 }], [{ "node": "Split in Batches", "type": "main", "index": 0 }]] },
-    "BuildPayload": { "main": [[{ "node": "Veo2 - Create", "type": "main", "index": 0 }]] },
-    "Veo2 - Create": { "main": [[{ "node": "Keep OpID", "type": "main", "index": 0 }]] },
-    "Keep OpID": { "main": [[{ "node": "Wait 15s", "type": "main", "index": 0 }]] },
-    "Wait 15s": { "main": [[{ "node": "Veo2 - Check Status", "type": "main", "index": 0 }]] },
-    "Veo2 - Check Status": { "main": [[{ "node": "Done?", "type": "main", "index": 0 }]] },
-    "Done?": {
-      "main": [
-        [{ "node": "PickResult", "type": "main", "index": 0 }],
-        [{ "node": "Wait 15s (loop)", "type": "main", "index": 0 }]
-      ]
-    },
-    "Wait 15s (loop)": { "main": [[{ "node": "Veo2 - Check Status", "type": "main", "index": 0 }]] },
-    "PickResult": { "main": [[{ "node": "Download Result", "type": "main", "index": 0 }]] },
-    "Download Result": { "main": [[{ "node": "Drive - Upload", "type": "main", "index": 0 }]] },
-    "Drive - Upload": { "main": [[{ "node": "Update Sheet - Success", "type": "main", "index": 0 }]] },
-    "Update Sheet - Success": { "main": [[{ "node": "Delay 3m", "type": "main", "index": 0 }]] },
-    "Delay 3m": { "main": [[{ "node": "Split in Batches", "type": "main", "index": 1 }]] }
-  },
-  "pinData": {},
-  "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "staticData": null
-}
+#@title 🚀 A1111 + JuggernautXL v9 Rundiffusion Photo 2 + VAE + ngrok (1-click)
+#@markdown 1) Isi token ngrok kamu di bawah, lalu jalankan cell ini sekali saja.
+NGROK_TOKEN = "MASUKKAN_TOKEN_NGROK_DI_SINI"  #@param {type:"string"}
+
+import os, subprocess, sys, time, textwrap
+
+def sh(cmd):
+    print(f"\n$ {cmd}")
+    code = subprocess.call(cmd, shell=True, executable="/bin/bash")
+    if code != 0:
+        print(f"⚠️ Perintah exit code: {code}")
+    return code
+
+# 0) Update & deps
+sh("apt -y update -qq && apt -y install -qq aria2")
+sh("pip -q install pyngrok xformers==0.0.22.post7")
+
+# 1) Clone A1111
+if not os.path.exists("/content/stable-diffusion-webui"):
+    sh("git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git /content/stable-diffusion-webui")
+os.chdir("/content/stable-diffusion-webui")
+
+# 2) Folder model & VAE
+sh("mkdir -p /content/stable-diffusion-webui/models/Stable-diffusion")
+sh("mkdir -p /content/stable-diffusion-webui/models/VAE")
+
+# 3) Download MODEL (JuggernautXL v9 Rundiffusion Photo 2, SDXL)
+MODEL_PATH = "/content/stable-diffusion-webui/models/Stable-diffusion/juggernautXL_v9Rundiffusionphoto2.safetensors"
+if not os.path.exists(MODEL_PATH):
+    sh(
+        "aria2c -x16 -s16 -o juggernautXL_v9Rundiffusionphoto2.safetensors "
+        "'https://civitai.com/api/download/models/348913?type=Model&format=SafeTensor&size=full&fp=fp16' "
+        "-d /content/stable-diffusion-webui/models/Stable-diffusion"
+    )
+else:
+    print("✅ Model sudah ada, lewati download.")
+
+# 4) Download VAE (SDXL VAE FP16 FIX)
+VAE_PATH = "/content/stable-diffusion-webui/models/VAE/sdxl_vae.safetensors"
+if not os.path.exists(VAE_PATH):
+    sh(
+        "aria2c -x16 -s16 -o sdxl_vae.safetensors "
+        "https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl_vae.safetensors "
+        "-d /content/stable-diffusion-webui/models/VAE"
+    )
+else:
+    print("✅ VAE sudah ada, lewati download.")
+
+# 5) Siapkan argumen launch A1111
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["COMMANDLINE_ARGS"] = (
+    "--xformers "
+    "--enable-insecure-extension-access "
+    "--no-half-vae "          # aman untuk SDXL VAE fp16 fix
+    "--opt-sdp-attention "
+    "--listen --port 7860"
+)
+
+# 6) Jalankan A1111 di background
+print("\n▶️ Menjalankan Stable Diffusion WebUI…")
+webui_log = open("/content/webui.log", "w")
+proc = subprocess.Popen(
+    [sys.executable, "launch.py"],
+    stdout=webui_log, stderr=webui_log, cwd="/content/stable-diffusion-webui"
+)
+
+# 7) Tunggu server siap (cek port 7860)
+import socket
+def wait_port(host="127.0.0.1", port=7860, timeout=180):
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(2)
+        try:
+            s.connect((host, port))
+            s.close()
+            return True
+        except:
+            time.sleep(2)
+    return False
+
+ready = wait_port()
+if not ready:
+    print("⚠️ WebUI belum siap dalam 3 menit, lanjut buka ngrok tetap… (cek /content/webui.log jika perlu)")
+
+# 8) Buka ngrok
+from pyngrok import ngrok
+if NGROK_TOKEN and NGROK_TOKEN != "MASUKKAN_TOKEN_NGROK_DI_SINI":
+    try:
+        ngrok.set_auth_token(NGROK_TOKEN)
+        public_url = ngrok.connect(7860)
+        print("\n🔗 Akses Stable Diffusion WebUI (AUTOMATIC1111):")
+        print(public_url)
+        print("\n📝 Catatan:")
+        print("- Pilih checkpoint: juggernautXL_v9Rundiffusionphoto2.safetensors")
+        print("- VAE: sdxl_vae.safetensors (otomatis terdeteksi), jika perlu pilih di Settings → SD VAE.")
+        print("- Log server: /content/webui.log")
+    except Exception as e:
+        print(f"❌ Gagal membuka ngrok: {e}\nPastikan token benar.")
+else:
+    print("⚠️ NGROK_TOKEN kosong. Edit variabel di atas lalu jalankan ulang cell ini untuk mendapatkan URL publik.")
