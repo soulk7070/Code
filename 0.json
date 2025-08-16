@@ -1,16 +1,46 @@
-// Ambil satu item dari Split In Batches dan siapkan payload untuk API + info baris
-const row = $json;
-return [
-  {
-    json: {
-      // data buat API Veo2 (samain dengan kebutuhan endpoint kamu)
-      apiPayload: {
-        prompt: row.prompt,
-        ratio: row.ratio,       // contoh: "landscape"
-        duration: row.duration  // contoh: "8s" atau angka detik kalau API minta number
-      },
-      // simpan info baris supaya mudah update balik nanti
-      rowIndex: row.rowIndex ?? row._sheet?.rowIndex ?? null
-    }
+// Ambil semua item dari node sebelumnya (Split In Batches akan kirim 1 item per loop)
+const items = $input.all();
+if (items.length === 0) {
+  $execution.stop();
+  return [];
+}
+
+const i = items[0].json;
+
+// Validasi prompt
+const prompt = (i.prompt || '').toString().trim();
+if (!prompt) {
+  throw new Error('Prompt kosong atau tidak valid');
+}
+
+// Normalisasi ratio
+const r = (i.ratio || 'landscape').toString().toLowerCase();
+const ratioMap = {
+  'landscape': '16:9',
+  '16:9': '16:9',
+  'portrait': '9:16',
+  '9:16': '9:16',
+  'square': '1:1',
+  '1:1': '1:1'
+};
+const aspectRatio = ratioMap[r] || '16:9';
+
+// Normalisasi durasi (boleh "8s" atau "8")
+let d = (i.duration ?? '8').toString().toLowerCase().replace('s','').trim();
+const durationSeconds = Number.parseInt(d, 10) || 8;
+
+return [{
+  json: {
+    // Payload untuk HTTP node "Veo2 - Create"
+    payload: {
+      prompt,
+      aspectRatio,
+      durationSeconds
+    },
+
+    // Metadata untuk node berikutnya
+    sheetRowNumber: i.rowNumber ?? i._row ?? null,
+    rowId: i.id ?? null,
+    originalRow: i
   }
-];
+}];
