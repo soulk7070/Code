@@ -1,46 +1,48 @@
-// Ambil semua item dari node sebelumnya (Split In Batches akan kirim 1 item per loop)
-const items = $input.all();
-if (items.length === 0) {
-  $execution.stop();
-  return [];
-}
+Ini cara instal comfyui terbaru 
 
-const i = items[0].json;
 
-// Validasi prompt
-const prompt = (i.prompt || '').toString().trim();
-if (!prompt) {
-  throw new Error('Prompt kosong atau tidak valid');
-}
+#@title 🚀 Install ComfyUI + SDXL + ComfyUI Manager
+!apt -y update -qq
+!pip install -q xformers pyngrok
 
-// Normalisasi ratio
-const r = (i.ratio || 'landscape').toString().toLowerCase();
-const ratioMap = {
-  'landscape': '16:9',
-  '16:9': '16:9',
-  'portrait': '9:16',
-  '9:16': '9:16',
-  'square': '1:1',
-  '1:1': '1:1'
-};
-const aspectRatio = ratioMap[r] || '16:9';
+# Clone ComfyUI
+!git clone https://github.com/comfyanonymous/ComfyUI
+%cd ComfyUI
 
-// Normalisasi durasi (boleh "8s" atau "8")
-let d = (i.duration ?? '8').toString().toLowerCase().replace('s','').trim();
-const durationSeconds = Number.parseInt(d, 10) || 8;
+# Install dependencies
+!pip install -r requirements.txt
 
-return [{
-  json: {
-    // Payload untuk HTTP node "Veo2 - Create"
-    payload: {
-      prompt,
-      aspectRatio,
-      durationSeconds
-    },
+# Buat folder model SDXL
+!mkdir -p models/checkpoints
 
-    // Metadata untuk node berikutnya
-    sheetRowNumber: i.rowNumber ?? i._row ?? null,
-    rowId: i.id ?? null,
-    originalRow: i
-  }
-}];
+# --- ⬇️ Download Model SDXL Base ---
+!wget -O models/checkpoints/sd_xl_base_1.0.safetensors https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors
+
+# --- ⬇️ Download Model SDXL Refiner (opsional tapi disarankan) ---
+!wget -O models/checkpoints/sd_xl_refiner_1.0.safetensors https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/resolve/main/sd_xl_refiner_1.0.safetensors
+
+# --- ⬇️ Install ComfyUI Manager ---
+!git clone https://github.com/ltdrdata/ComfyUI-Manager.git custom_nodes/ComfyUI-Manager
+
+# Jalankan ComfyUI (port 8188)
+import subprocess
+process = subprocess.Popen(["python", "main.py", "--dont-print-server", "--port", "8188"])
+
+
+
+#@title 🔐 Inisialisasi Ngrok Token (WAJIB)
+!pip install -q pyngrok
+from pyngrok import ngrok
+
+# Ganti isi string di bawah dengan token kamu
+ngrok.set_auth_token("MASUKKAN_TOKEN_KAMU_DI_SINI")
+
+
+# Jalankan ComfyUI
+import subprocess
+process = subprocess.Popen(["python", "main.py", "--dont-print-server", "--port", "8188"])
+
+# Buka WebUI pakai ngrok
+public_url = ngrok.connect(8188)
+print("🔗 Akses ComfyUI WebUI di sini:")
+print(public_url)
