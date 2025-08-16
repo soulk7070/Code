@@ -1,49 +1,62 @@
-Cloning into '/content/stable-diffusion-webui/repositories/stable-diffusion-webui-assets'...
-Cloning into '/content/stable-diffusion-webui/repositories/stable-diffusion-stability-ai'...
-Cloning into '/content/stable-diffusion-webui/repositories/generative-models'...
-Cloning into '/content/stable-diffusion-webui/repositories/k-diffusion'...
-Cloning into '/content/stable-diffusion-webui/repositories/BLIP'...
-WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
-E0000 00:00:1755380734.537218    2905 cuda_dnn.cc:8579] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
-E0000 00:00:1755380734.607243    2905 cuda_blas.cc:1407] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
-W0000 00:00:1755380735.104221    2905 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
-W0000 00:00:1755380735.104272    2905 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
-W0000 00:00:1755380735.104276    2905 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
-W0000 00:00:1755380735.104279    2905 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
-/usr/local/lib/python3.11/dist-packages/timm/models/layers/__init__.py:48: FutureWarning: Importing from timm.models.layers is deprecated, please import via timm.layers
-  warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.layers", FutureWarning)
-WARNING:xformers:WARNING[XFORMERS]: xFormers can't load C++/CUDA extensions. xFormers was built for:
-    PyTorch 2.1.0+cu121 with CUDA 1201 (you have 2.6.0+cu124)
-    Python  3.11.6 (you have 3.11.13)
-  Please reinstall xformers (see https://github.com/facebookresearch/xformers#installing-xformers)
-  Memory-efficient attention, SwiGLU, sparse and more won't be available.
-  Set XFORMERS_MORE_DETAILS=1 for more details
-/usr/local/lib/python3.11/dist-packages/xformers/triton/softmax.py:30: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
-  @custom_fwd(cast_inputs=torch.float16 if _triton_softmax_fp16_enabled else None)
-/usr/local/lib/python3.11/dist-packages/xformers/triton/softmax.py:86: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
-  @custom_bwd
-/usr/local/lib/python3.11/dist-packages/xformers/ops/swiglu_op.py:106: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
-  @torch.cuda.amp.custom_fwd
-/usr/local/lib/python3.11/dist-packages/xformers/ops/swiglu_op.py:127: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
-  @torch.cuda.amp.custom_bwd
-=================================================================================
-You are running xformers 0.0.22.post7.
-The program is tested to work with xformers 0.0.23.post1.
-To reinstall the desired version, run with commandline flag --reinstall-xformers.
+#@title 🔧 Fix launch + xformers + ngrok (aman dari ERR_NGROK_8012)
+NGROK_TOKEN = "MASUKKAN_TOKEN_NGROK_DI_SINI"  #@param {type:"string"}
 
-Use --skip-version-check commandline argument to disable this check.
-=================================================================================
-Python 3.11.13 (main, Jun  4 2025, 08:57:29) [GCC 11.4.0]
-Version: v1.10.1
-Commit hash: 82a973c04367123ae98bd9abdf80d9eda9b910e2
-Installing clip
-Installing open_clip
-Cloning assets into /content/stable-diffusion-webui/repositories/stable-diffusion-webui-assets...
-Cloning Stable Diffusion into /content/stable-diffusion-webui/repositories/stable-diffusion-stability-ai...
-Cloning Stable Diffusion XL into /content/stable-diffusion-webui/repositories/generative-models...
-Cloning K-diffusion into /content/stable-diffusion-webui/repositories/k-diffusion...
-Cloning BLIP into /content/stable-diffusion-webui/repositories/BLIP...
-Installing requirements
-Launching Web UI with arguments: --xformers --enable-insecure-extension-access --no-half-vae --opt-sdp-attention --listen --port 7860
-Calculating sha256 for /content/stable-diffusion-webui/models/Stable-diffusion/juggernautXL_v9Rundiffusionphoto2.safetensors: /usr/local/lib/python3.11/dist-packages/huggingface_hub/file_download.py:945: FutureWarning: `resume_download` is deprecated and will be removed in version 1.0.0. Downloads always resume when possible. If you want to force a new download, use `force_download=True`.
-  warnings.warn(
+import os, sys, time, subprocess, socket
+
+def sh(cmd):
+    return subprocess.call(cmd, shell=True, executable="/bin/bash")
+
+# 0) Pastikan foldernya benar
+os.chdir("/content/stable-diffusion-webui")
+
+# 1) Reinstall xformers agar match Torch di Colab (auto via A1111)
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["COMMANDLINE_ARGS"] = (
+    "--xformers "
+    "--enable-insecure-extension-access "
+    "--no-half-vae "
+    "--opt-sdp-attention "
+    "--skip-version-check "      # lewati cek versi ketat
+    "--reinstall-xformers "      # biar pasang xformers yg cocok
+    "--listen --port 7860"
+)
+
+# 2) Start WebUI di background
+log_path = "/content/webui.log"
+with open(log_path, "w") as f:
+    p = subprocess.Popen([sys.executable, "launch.py"], stdout=f, stderr=f, cwd=".")
+
+# 3) Tunggu port 7860 ready (maks 6 menit krn SDXL cek sha256 bisa lama)
+def wait_port(host="127.0.0.1", port=7860, timeout=360):
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(2)
+        try:
+            s.connect((host, port))
+            s.close()
+            return True
+        except:
+            time.sleep(2)
+    return False
+
+print("⏳ Menunggu WebUI siap di :7860 (cek progress di /content/webui.log)...")
+ready = wait_port(timeout=360)
+if not ready:
+    !tail -n 80 /content/webui.log
+    raise SystemExit("❌ WebUI belum siap. Lihat log di atas (kemungkinan kehabisan RAM/VRAM).")
+
+# 4) Buka ngrok SETELAH port siap
+from pyngrok import ngrok
+if NGROK_TOKEN and NGROK_TOKEN != "MASUKKAN_TOKEN_NGROK_DI_SINI":
+    ngrok.set_auth_token(NGROK_TOKEN)
+    public_url = ngrok.connect(7860)
+    print("🔗 URL Stable Diffusion WebUI (A1111):", public_url)
+else:
+    print("⚠️ NGROK_TOKEN kosong. Edit variabel di atas lalu jalankan ulang cell ini.")
+
+# 5) Jaga runtime tetap hidup (tanpa boros CPU)
+import time
+print("✅ WebUI jalan. Menjaga runtime tetap aktif...")
+while True:
+    time.sleep(60)
