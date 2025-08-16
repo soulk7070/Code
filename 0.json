@@ -1,48 +1,57 @@
-Ini cara instal comfyui terbaru 
-
-
-#@title 🚀 Install ComfyUI + SDXL + ComfyUI Manager
+# =================================================================
+# 🚀 1. INSTALASI SEMUA YANG DIBUTUHKAN
+# =================================================================
 !apt -y update -qq
 !pip install -q xformers pyngrok
 
-# Clone ComfyUI
-!git clone https://github.com/comfyanonymous/ComfyUI
+# Clone ComfyUI jika belum ada
+import os
+if not os.path.isdir("ComfyUI"):
+  !git clone https://github.com/comfyanonymous/ComfyUI
 %cd ComfyUI
-
-# Install dependencies
 !pip install -r requirements.txt
 
-# Buat folder model SDXL
+# Clone ComfyUI-Manager
+if not os.path.isdir("custom_nodes/ComfyUI-Manager"):
+  !git clone https://github.com/ltdrdata/ComfyUI-Manager.git custom_nodes/ComfyUI-Manager
+
+# =================================================================
+# 📦 2. DOWNLOAD MODEL (Jalankan hanya jika belum ada)
+# =================================================================
+# Buat folder jika belum ada
 !mkdir -p models/checkpoints
 
-# --- ⬇️ Download Model SDXL Base ---
-!wget -O models/checkpoints/sd_xl_base_1.0.safetensors https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors
+# --- Download Model SDXL Base ---
+!wget -c https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors -P models/checkpoints/
 
-# --- ⬇️ Download Model SDXL Refiner (opsional tapi disarankan) ---
-!wget -O models/checkpoints/sd_xl_refiner_1.0.safetensors https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/resolve/main/sd_xl_refiner_1.0.safetensors
+# --- Download Model SDXL Refiner ---
+!wget -c https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/resolve/main/sd_xl_refiner_1.0.safetensors -P models/checkpoints/
 
-# --- ⬇️ Install ComfyUI Manager ---
-!git clone https://github.com/ltdrdata/ComfyUI-Manager.git custom_nodes/ComfyUI-Manager
-
-# Jalankan ComfyUI (port 8188)
+# =================================================================
+# 🌐 3. JALANKAN COMFYUI & NGROK
+# =================================================================
 import subprocess
-process = subprocess.Popen(["python", "main.py", "--dont-print-server", "--port", "8188"])
-
-
-
-#@title 🔐 Inisialisasi Ngrok Token (WAJIB)
-!pip install -q pyngrok
+import threading
+import time
 from pyngrok import ngrok
 
-# Ganti isi string di bawah dengan token kamu
-ngrok.set_auth_token("MASUKKAN_TOKEN_KAMU_DI_SINI")
+# Masukkan Ngrok Token Anda di sini
+NGROK_TOKEN = "MASUKKAN_TOKEN_KAMU_DI_SINI"  # 👈 Ganti dengan token Anda
 
+if not NGROK_TOKEN:
+  print("⚠️ Harap masukkan Ngrok Auth Token Anda!")
+else:
+  ngrok.set_auth_token(NGROK_TOKEN)
 
-# Jalankan ComfyUI
-import subprocess
-process = subprocess.Popen(["python", "main.py", "--dont-print-server", "--port", "8188"])
+  # Jalankan ComfyUI di background
+  print("✅ Memulai server ComfyUI...")
+  process = subprocess.Popen(["python", "main.py", "--dont-print-server", "--port", "8188"])
 
-# Buka WebUI pakai ngrok
-public_url = ngrok.connect(8188)
-print("🔗 Akses ComfyUI WebUI di sini:")
-print(public_url)
+  # Beri jeda 15 detik agar server ComfyUI siap
+  print("⏳ Menunggu server siap selama 15 detik...")
+  time.sleep(15)
+
+  # Buka terowongan ngrok
+  public_url = ngrok.connect(8188)
+  print(f"🔗 Akses ComfyUI WebUI Anda di sini: {public_url}")
+
