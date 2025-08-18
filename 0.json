@@ -1,90 +1,122 @@
-# =================================================================
-# 📝 1. MASUKKAN TOKEN DAN DOMAIN ANDA
-# =================================================================
-CLOUDFLARE_TUNNEL_TOKEN = "MASUKKAN_TOKEN_CLOUDFLARE_ANDA_DI_SINI"
-YOUR_DOMAIN = "MASUKKAN_NAMA_DOMAIN_ANDA_DI_SINI"
-HF_TOKEN = "MASUKKAN_TOKEN_HUGGING_FACE_ANDA_DI_SINI"
+# ==============================
+# 📦 SETUP + DOWNLOAD + RUN
+# ==============================
+# TODO: isi variabel ini sebelum run
+CLOUDFLARE_TUNNEL_TOKEN = "ISI_TOKEN_TUNNEL_CLOUDFLARE_KAMU"
+YOUR_DOMAIN = "comfy.domainkamu.com"   # opsional, hanya untuk info cetak
+HF_TOKEN = "ISI_TOKEN_HUGGINGFACE_BILA_PERLU"  # boleh kosong; beberapa link HF publik
 
-# =================================================================
-# 🚀 2. INSTALASI (VERSI FINAL v2 DENGAN LOCK VERSI)
-# =================================================================
-print("⏳ Memulai instalasi ComfyUI dan dependensi...")
-!apt -y update -qq
+INSTALL_MANAGER = True  # Pasang ComfyUI-Manager agar mudah install custom nodes
 
-# Install Cloudflared
-!wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared
-!chmod +x /usr/local/bin/cloudflared
+import os, sys, subprocess, textwrap, shutil, time
 
-# Clone ComfyUI dan setup dasar
-import os
-%cd /content
-if not os.path.isdir("ComfyUI"):
-  !git clone https://github.com/comfyanonymous/ComfyUI.git
-%cd ComfyUI
-!pip install -r requirements.txt
+BASE = "/content"
+COMFY = f"{BASE}/ComfyUI"
+PY = sys.executable
+PORT = 8188
+CLOUDFLARED_BIN = f"{BASE}/cloudflared-linux-amd64"
 
-# =========================================================
-# 🔧 FIX DEPENDENCY CONFLICTS (BAGIAN TERPENTING)
-# =========================================================
-print("🔧 Memperbaiki konflik dengan instalasi ulang torch, torchvision...")
-!pip uninstall -y torch torchvision torchaudio xformers
-!pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+def run(cmd):
+    print("→", cmd)
+    p = subprocess.run(cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    print(p.stdout)
 
-print("✅ Menginstal versi xformers yang spesifik dan kompatibel...")
-# Menginstal versi xformers yang spesifik agar tidak meng-upgrade torch lagi
-!pip install xformers==0.0.25.post1
-# =========================================================
+# 1) Dependensi ringan + cloudflared
+run("apt -y update -qq")
+if not os.path.exists(CLOUDFLARED_BIN):
+    run(f"wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O {CLOUDFLARED_BIN}")
+    run(f"chmod +x {CLOUDFLARED_BIN}")
 
-# Install Custom Nodes
-print("⏳ Menginstal Custom Nodes...")
-if not os.path.isdir("custom_nodes/ComfyUI-Manager"):
-  !git clone https://github.com/ltdrdata/ComfyUI-Manager.git custom_nodes/ComfyUI-Manager
-if not os.path.isdir("custom_nodes/ComfyUI-Crystools"):
-  !git clone https://github.com/crystian/ComfyUI-Crystools.git custom_nodes/ComfyUI-Crystools
-!pip install deepdiff piexif py-cpuinfo pynvml
-print("✅ Instalasi selesai.")
-
-# =================================================================
-# 📦 3. DOWNLOAD SEMUA MODEL YANG DIBUTUHKAN
-# =================================================================
-# (Bagian ini sama seperti sebelumnya, tidak perlu diubah)
-print("⏳ Memulai proses unduh model...")
-!mkdir -p models/diffusion_models models/clip models/upscale_models models/vae
-print("Mengunduh FLUX & CLIP GGUF Models...")
-!wget -c "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q4_0.gguf?download=true" -O models/diffusion_models/flux1-dev-Q4_0.gguf
-!wget -c "https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q5_K_M.gguf?download=true" -O models/clip/t5-v1_1-xxl-encoder-Q5_K_M.gguf
-!wget -c "https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q4_K_S.gguf?download=true" -O models/clip/t5-v1_1-xxl-encoder-Q4_K_S.gguf
-if HF_TOKEN and HF_TOKEN != "MASUKKAN_TOKEN_HUGGING_FACE_ANDA_DI_SINI":
-    os.environ['HF_TOKEN'] = HF_TOKEN
-    print("Mengunduh model yang memerlukan token (CLIP-L, Upscaler, & VAE)...")
-    !wget --header="Authorization: Bearer $HF_TOKEN" -c "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors?download=true" -O models/clip/clip_l.safetensors
-    !wget --header="Authorization: Bearer $HF_TOKEN" -c "https://huggingface.co/Akumetsu971/SD_Anime_Futuristic_Armor/resolve/main/4x_NMKD-Siax_200k.pth?download=true" -O models/upscale_models/4x_NMKD-Siax_200k.pth
-    !wget --header="Authorization: Bearer $HF_TOKEN" -c "https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors?download=true" -O models/vae/ae.safetensors
+# 2) Clone ComfyUI (jika belum)
+if not os.path.isdir(COMFY):
+    run(f"git clone -q https://github.com/comfyanonymous/ComfyUI {COMFY}")
 else:
-    print("⚠️ Token Hugging Face tidak dimasukkan, beberapa model dilewati.")
-print("✅ Semua model selesai diunduh.")
+    print("✔ ComfyUI sudah ada, skip clone.")
 
-# =================================================================
-# 🌐 4. JALANKAN COMFYUI & CLOUDFLARE TUNNEL
-# =================================================================
-import subprocess
-import time
+# 3) (Opsional) ComfyUI-Manager
+if INSTALL_MANAGER:
+    mgr = f"{COMFY}/custom_nodes/ComfyUI-Manager"
+    if not os.path.isdir(mgr):
+        run(f"git clone -q https://github.com/ltdrdata/ComfyUI-Manager {mgr}")
+    else:
+        print("✔ ComfyUI-Manager sudah ada.")
 
-if not CLOUDFLARE_TUNNEL_TOKEN or CLOUDFLARE_TUNNEL_TOKEN == "MASUKKAN_TOKEN_CLOUDFLARE_ANDA_DI_SINI":
-  print("⚠️ Harap masukkan Cloudflare Tunnel Token Anda di bagian paling atas!")
+# 4) Custom Node: ComfyUI-Crystools
+crys = f"{COMFY}/custom_nodes/ComfyUI-Crystools"
+if not os.path.isdir(crys):
+    run(f"cd {COMFY}/custom_nodes && git clone https://github.com/crystian/ComfyUI-Crystools.git")
 else:
-  print("✅ Memulai server ComfyUI...")
-  # PENTING: Pastikan port ini sesuai dengan yang ada di dashboard Cloudflare Anda
-  comfyui_process = subprocess.Popen(["python", "main.py", "--dont-print-server", "--port", "8888", "--highvram"])
+    print("✔ ComfyUI-Crystools sudah ada.")
 
-  print("⏳ Menunggu server siap selama 20 detik...")
-  time.sleep(20)
+# 5) Pip packages untuk Crystools
+run(f"{PY} -m pip -q install --upgrade pip")
+run(f"{PY} -m pip -q install deepdiff piexif py-cpuinfo pynvml requests tqdm")
 
-  print(f"✅ Menghubungkan ke domain Anda melalui Cloudflare Tunnel...")
-  cloudflared_command = f"cloudflared tunnel --edge-ip-version auto --token {CLOUDFLARE_TUNNEL_TOKEN} run"
-  cloudflared_process = subprocess.Popen(cloudflared_command.split(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-  time.sleep(10)
+# 6) Buat folder model yang dibutuhkan
+paths = {
+    "diffusion_models": f"{COMFY}/models/diffusion_models",
+    "clip":             f"{COMFY}/models/clip",
+    "vae":              f"{COMFY}/models/vae",
+    "upscale_models":   f"{COMFY}/models/upscale_models",
+}
+for p in paths.values():
+    os.makedirs(p, exist_ok=True)
 
-  print("🎉 ComfyUI Siap Digunakan! 🎉")
-  print(f"🔗 Akses melalui domain pribadi Anda: https://{YOUR_DOMAIN}")
+# 7) Download MODELS (sesuai listmu)
+# — Flux dev (GGUF)
+run(f"wget -q --show-progress -O '{paths['diffusion_models']}/flux1-dev-Q4_0.gguf' "
+    "'https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q4_0.gguf?download=true'")
 
+# — T5 encoders (GGUF)
+run(f"wget -q --show-progress -O '{paths['clip']}/t5-v1_1-xxl-encoder-Q5_K_M.gguf' "
+    "'https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q5_K_M.gguf?download=true'")
+
+run(f"wget -q --show-progress -O '{paths['clip']}/t5-v1_1-xxl-encoder-Q4_K_S.gguf' "
+    "'https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q4_K_S.gguf?download=true'")
+
+# — Dual Clip Loader (GGUF) 2 → clip_l.safetensors (pakai HF token jika ada)
+if HF_TOKEN and len(HF_TOKEN) > 10:
+    run(f"wget -q --show-progress --header='Authorization: Bearer {HF_TOKEN}' "
+        f"-O '{paths['clip']}/clip_l.safetensors' "
+        "'https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors?download=true'")
+else:
+    # coba tanpa header (banyak repo publik)
+    run(f"wget -q --show-progress -O '{paths['clip']}/clip_l.safetensors' "
+        "'https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors?download=true'")
+
+# — VAE → ae.safetensors (pakai HF token jika ada)
+if HF_TOKEN and len(HF_TOKEN) > 10:
+    run(f"wget -q --show-progress --header='Authorization: Bearer {HF_TOKEN}' "
+        f"-O '{paths['vae']}/ae.safetensors' "
+        "'https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors?download=true'")
+else:
+    run(f"wget -q --show-progress -O '{paths['vae']}/ae.safetensors' "
+        "'https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors?download=true'")
+
+# — Upscale model
+run(f"wget -q --show-progress -O '{paths['upscale_models']}/4x_NMKD-Siax_200k.pth' "
+    "'https://huggingface.co/Akumetsu971/SD_Anime_Futuristic_Armor/resolve/main/4x_NMKD-Siax_200k.pth?download=true'")
+
+# 8) Bersihkan proses sisa & RUN ComfyUI
+run("pkill -f 'cloudflared' || true")
+run("pkill -f 'ComfyUI/main.py' || true")
+os.chdir(COMFY)
+run(f"nohup {PY} main.py --listen 0.0.0.0 --port {PORT} > {BASE}/comfyui.log 2>&1 &")
+
+# 9) Jalankan Cloudflare Tunnel (Named Tunnel token)
+if CLOUDFLARE_TUNNEL_TOKEN and len(CLOUDFLARE_TUNNEL_TOKEN) > 20:
+    run(f"nohup {CLOUDFLARED_BIN} tunnel --no-autoupdate run --token '{CLOUDFLARE_TUNNEL_TOKEN}' > {BASE}/cloudflared.log 2>&1 &")
+    cf_msg = "✅ Cloudflare Tunnel aktif (named tunnel). Pastikan Public Hostname diarahkan ke http://localhost:8188."
+else:
+    cf_msg = "⚠️ CLOUDFLARE_TUNNEL_TOKEN belum diisi/terlalu pendek. Isi token untuk pakai domain Cloudflare."
+
+print(textwrap.dedent(f"""
+==========================
+🎉 SETUP + DOWNLOAD SELESAI
+- ComfyUI     : http://127.0.0.1:{PORT}
+- Domainmu    : https://{YOUR_DOMAIN}  (jika routing di Cloudflare sudah benar)
+- Log ComfyUI : {BASE}/comfyui.log
+- Log CF      : {BASE}/cloudflared.log
+{cf_msg}
+==========================
+"""))
