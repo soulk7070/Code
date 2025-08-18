@@ -1,50 +1,203 @@
-# ==============================
-# ▶️ RUN ONLY (COLAB-SAFE RESTART)
-# ==============================
-# ▶️ TODO:
-CLOUDFLARE_TUNNEL_TOKEN = "ISI_TOKEN_TUNNEL_CLOUDFLARE_KAMU"
-YOUR_DOMAIN = "comfy.ruangjiwa.online"
+# System & Python dependencies
+!apt -y update -qq
+!apt -y install -qq libgl1-mesa-glx wget git
 
-import os, sys, subprocess, textwrap, time
-BASE = "/content"
-COMFY = f"{BASE}/ComfyUI"
-PY = sys.executable
-PORT = 8188
-CLOUDFLARED_BIN = f"{BASE}/cloudflared-linux-amd64"
+# Clone ComfyUI
+!git clone https://github.com/comfyanonymous/ComfyUI.git
+%cd ComfyUI
 
-def sh(cmd):
-    print("→", cmd)
-    p = subprocess.run(cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    print(p.stdout)
+# Install Python packages
+!pip install -r requirements.txt
 
-assert os.path.isdir(COMFY), "❌ ComfyUI belum terpasang. Jalankan Sel #1 dulu."
+import torch
+print("✅ CUDA available:", torch.cuda.is_available())
+print("💡 GPU device:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None")
 
-# Stop & start ulang
-sh("pkill -f 'ComfyUI/main.py' || true")
-sh("pkill -f 'cloudflared' || true")
-os.chdir(COMFY)
-sh(f"nohup {PY} main.py --listen 0.0.0.0 --port {PORT} > {BASE}/comfyui.log 2>&1 &")
 
-if os.path.exists(CLOUDFLARED_BIN) and CLOUDFLARE_TUNNEL_TOKEN and len(CLOUDFLARE_TUNNEL_TOKEN) > 20:
-    sh(f"nohup {CLOUDFLARED_BIN} tunnel --no-autoupdate run --token '{CLOUDFLARE_TUNNEL_TOKEN}' > {BASE}/cloudflared.log 2>&1 &")
-    cf_msg = "✅ Tunnel aktif."
+✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓
+
+# 📂 Mount Google Drive
+from google.colab import drive
+import os
+
+drive.mount('/content/drive')
+
+# Define your base folder inside Google Drive
+GDRIVE_BASE = '/content/drive/MyDrive/ComfyUI'
+
+# 📁 Define required subfolders
+REQUIRED_FOLDERS = [
+    'models/checkpoints',
+    'models/controlnet',
+    'models/vae',
+    'models/upscale_models',
+    'models/clip',
+    'models/unet',
+    'custom_nodes',
+    'input',
+    'output',
+    'temp',
+    'user'
+]
+
+# ✅ Create folders if not exist
+for folder in REQUIRED_FOLDERS:
+    full_path = os.path.join(GDRIVE_BASE, folder)
+    os.makedirs(full_path, exist_ok=True)
+
+print("✅ All required folders are verified or created in Google Drive.")
+
+
+✓✓✓✓✓✓✓✓
+
+COMFYUI_PATH = '/content/ComfyUI'
+
+LINKS = {
+    'models': f'{GDRIVE_BASE}/models',
+    'custom_nodes': f'{GDRIVE_BASE}/custom_nodes',
+    'input': f'{GDRIVE_BASE}/input',
+    'output': f'{GDRIVE_BASE}/output',
+    'temp': f'{GDRIVE_BASE}/temp',
+    'user': f'{GDRIVE_BASE}/user'
+}
+
+for name, target in LINKS.items():
+    source = os.path.join(COMFYUI_PATH, name)
+    # Remove old local folder
+    if os.path.islink(source) or os.path.isdir(source):
+        !rm -rf "{source}"
+    # Create symlink
+    os.symlink(target, source)
+
+print("✅ ComfyUI is now fully configured to use Google Drive.")
+
+✓✓✓✓
+
+from google.colab import drive
+drive.mount('/content/drive')
+
+✓✓✓✓✓✓
+
+import os
+
+# ======================================
+# 🔑 CONFIG
+# ======================================
+HF_TOKEN = ""
+
+# ======================================
+# 📂 PATH MODEL
+# ======================================
+drive_model_path = "/content/drive/MyDrive/ComfyUI/models"
+
+paths = {
+    # Diffusion model
+    "diffusion": {
+        "filename": "flux1-dev-Q4_0.gguf",
+        "url": "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q4_0.gguf?download=true",
+        "folder": "diffusion_models"
+    },
+    # CLIP encoders
+    "clip_t5_q5": {
+        "filename": "t5-v1_1-xxl-encoder-Q5_K_M.gguf",
+        "url": "https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q5_K_M.gguf?download=true",
+        "folder": "clip"
+    },
+    "clip_t5_q4": {
+        "filename": "t5-v1_1-xxl-encoder-Q4_K_S.gguf",
+        "url": "https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q4_K_S.gguf?download=true",
+        "folder": "clip"
+    },
+    # Dual Clip Loader
+    "clip_l": {
+        "filename": "clip_l.safetensors",
+        "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors?download=true",
+        "folder": "clip"
+    },
+    # VAE
+    "vae": {
+        "filename": "ae.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors?download=true",
+        "folder": "vae"
+    },
+    # Upscale model
+    "upscale": {
+        "filename": "4x_NMKD-Siax_200k.pth",
+        "url": "https://huggingface.co/Akumetsu971/SD_Anime_Futuristic_Armor/resolve/main/4x_NMKD-Siax_200k.pth?download=true",
+        "folder": "upscale_models"
+    }
+}
+
+# ======================================
+# ⬇️ LOGIC DOWNLOAD
+# ======================================
+for key, data in paths.items():
+    folder_path = os.path.join(drive_model_path, data["folder"])
+    file_path = os.path.join(folder_path, data["filename"])
+    os.makedirs(folder_path, exist_ok=True)
+
+    if not os.path.exists(file_path):
+        print(f"⬇️ Mengunduh {data['filename']}...")
+        !wget --header="Authorization: Bearer $HF_TOKEN" -O "{file_path}" "{data['url']}"
+        print(f"✅ {data['filename']} berhasil diunduh ke {folder_path}")
+    else:
+        print(f"✅ {data['filename']} sudah ada, skip unduh.")
+
+
+
+✓✓✓✓✓✓✓✓
+
+
+!rm -f ngrok ngrok.zip ngrok-stable-linux-amd64.tgz
+!wget -O ngrok-stable-linux-amd64.tgz https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
+!tar -xvzf ngrok-stable-linux-amd64.tgz
+!chmod +x ngrok
+!./ngrok version
+!./ngrok authtoken 31SHA7EHRu2DlbH0oEdGWTzHfeF_4c2RHUkeuQU6nJxuYvDLG
+
+
+
+✓✓✓✓✓✓
+
+
+
+
+# ComfyUI Manager
+!pip install "numpy==1.26.4" --force-reinstall --quiet > /dev/null 2>&1
+!rm -rf /content/ComfyUI/custom_nodes/ComfyUI-Manager
+!git clone --quiet https://github.com/ltdrdata/ComfyUI-Manager.git /content/ComfyUI/custom_nodes/ComfyUI-Manager
+print("✅ ComfyUI-Manager installed and numpy version is set for compatibility.")
+
+
+
+✓✓✓✓✓✓✓✓✓
+
+
+import subprocess
+import time
+import requests
+
+# Start ngrok tunnel to port 8188
+ngrok_process = subprocess.Popen(['./ngrok', 'http', '8188'],
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.STDOUT)
+
+# Wait and retry connection
+for i in range(10):
+    try:
+        r = requests.get('http://localhost:4040/api/tunnels')
+        public_url = r.json()['tunnels'][0]['public_url']
+        print(f"✅ Ngrok tunnel established: {public_url}")
+        break
+    except Exception as e:
+        print(f"⏳ Attempt {i+1}/10: Ngrok not ready yet...")
+        time.sleep(2)
 else:
-    cf_msg = "⚠️ cloudflared belum ada atau token belum diisi. Jalankan Sel #1."
+    print("❌ Ngrok failed to start. Please restart the runtime and try again.")
 
-time.sleep(2)
-print("\n==== HEALTH CHECK ====")
-sh("curl -sI http://127.0.0.1:8188 || true")
-print("\n==== tail comfyui.log ====")
-sh("tail -n 60 /content/comfyui.log || true")
-print("\n==== tail cloudflared.log ====")
-sh("tail -n 40 /content/cloudflared.log || true")
+✓✓✓✓✓✓
 
-print(textwrap.dedent(f"""
-==========================
-🚀 RUNNING
-Local  : http://127.0.0.1:{PORT}
-Domain : https://{YOUR_DOMAIN}
-Logs   : /content/comfyui.log | /content/cloudflared.log
-{cf_msg}
-==========================
-"""))
+# Start ComfyUI with public access
+%cd /content/ComfyUI
+!python main.py --listen 0.0.0.0 --port 8188   --cuda-device 0
+
