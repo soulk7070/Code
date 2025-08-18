@@ -1,0 +1,50 @@
+# ==============================
+# ▶️ RUN ONLY (COLAB-SAFE RESTART)
+# ==============================
+# ▶️ TODO:
+CLOUDFLARE_TUNNEL_TOKEN = "ISI_TOKEN_TUNNEL_CLOUDFLARE_KAMU"
+YOUR_DOMAIN = "comfy.ruangjiwa.online"
+
+import os, sys, subprocess, textwrap, time
+BASE = "/content"
+COMFY = f"{BASE}/ComfyUI"
+PY = sys.executable
+PORT = 8188
+CLOUDFLARED_BIN = f"{BASE}/cloudflared-linux-amd64"
+
+def sh(cmd):
+    print("→", cmd)
+    p = subprocess.run(cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    print(p.stdout)
+
+assert os.path.isdir(COMFY), "❌ ComfyUI belum terpasang. Jalankan Sel #1 dulu."
+
+# Stop & start ulang
+sh("pkill -f 'ComfyUI/main.py' || true")
+sh("pkill -f 'cloudflared' || true")
+os.chdir(COMFY)
+sh(f"nohup {PY} main.py --listen 0.0.0.0 --port {PORT} > {BASE}/comfyui.log 2>&1 &")
+
+if os.path.exists(CLOUDFLARED_BIN) and CLOUDFLARE_TUNNEL_TOKEN and len(CLOUDFLARE_TUNNEL_TOKEN) > 20:
+    sh(f"nohup {CLOUDFLARED_BIN} tunnel --no-autoupdate run --token '{CLOUDFLARE_TUNNEL_TOKEN}' > {BASE}/cloudflared.log 2>&1 &")
+    cf_msg = "✅ Tunnel aktif."
+else:
+    cf_msg = "⚠️ cloudflared belum ada atau token belum diisi. Jalankan Sel #1."
+
+time.sleep(2)
+print("\n==== HEALTH CHECK ====")
+sh("curl -sI http://127.0.0.1:8188 || true")
+print("\n==== tail comfyui.log ====")
+sh("tail -n 60 /content/comfyui.log || true")
+print("\n==== tail cloudflared.log ====")
+sh("tail -n 40 /content/cloudflared.log || true")
+
+print(textwrap.dedent(f"""
+==========================
+🚀 RUNNING
+Local  : http://127.0.0.1:{PORT}
+Domain : https://{YOUR_DOMAIN}
+Logs   : /content/comfyui.log | /content/cloudflared.log
+{cf_msg}
+==========================
+"""))
