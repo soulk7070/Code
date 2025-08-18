@@ -6,7 +6,7 @@ YOUR_DOMAIN = "MASUKKAN_NAMA_DOMAIN_ANDA_DI_SINI"
 HF_TOKEN = "MASUKKAN_TOKEN_HUGGING_FACE_ANDA_DI_SINI"
 
 # =================================================================
-# 🚀 2. INSTALASI (VERSI FINAL DENGAN PERBAIKAN DEPENDENSI)
+# 🚀 2. INSTALASI (VERSI FINAL v2 DENGAN LOCK VERSI)
 # =================================================================
 print("⏳ Memulai instalasi ComfyUI dan dependensi...")
 !apt -y update -qq
@@ -26,10 +26,13 @@ if not os.path.isdir("ComfyUI"):
 # =========================================================
 # 🔧 FIX DEPENDENCY CONFLICTS (BAGIAN TERPENTING)
 # =========================================================
-print("🔧 Memperbaiki konflik dengan instalasi ulang torch, torchvision, dan xformers...")
+print("🔧 Memperbaiki konflik dengan instalasi ulang torch, torchvision...")
 !pip uninstall -y torch torchvision torchaudio xformers
 !pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-!pip install xformers
+
+print("✅ Menginstal versi xformers yang spesifik dan kompatibel...")
+# Menginstal versi xformers yang spesifik agar tidak meng-upgrade torch lagi
+!pip install xformers==0.0.25.post1
 # =========================================================
 
 # Install Custom Nodes
@@ -44,16 +47,13 @@ print("✅ Instalasi selesai.")
 # =================================================================
 # 📦 3. DOWNLOAD SEMUA MODEL YANG DIBUTUHKAN
 # =================================================================
+# (Bagian ini sama seperti sebelumnya, tidak perlu diubah)
 print("⏳ Memulai proses unduh model...")
 !mkdir -p models/diffusion_models models/clip models/upscale_models models/vae
-
-# --- Model yang tidak butuh token ---
 print("Mengunduh FLUX & CLIP GGUF Models...")
 !wget -c "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q4_0.gguf?download=true" -O models/diffusion_models/flux1-dev-Q4_0.gguf
 !wget -c "https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q5_K_M.gguf?download=true" -O models/clip/t5-v1_1-xxl-encoder-Q5_K_M.gguf
 !wget -c "https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q4_K_S.gguf?download=true" -O models/clip/t5-v1_1-xxl-encoder-Q4_K_S.gguf
-
-# --- Model yang butuh token HF ---
 if HF_TOKEN and HF_TOKEN != "MASUKKAN_TOKEN_HUGGING_FACE_ANDA_DI_SINI":
     os.environ['HF_TOKEN'] = HF_TOKEN
     print("Mengunduh model yang memerlukan token (CLIP-L, Upscaler, & VAE)...")
@@ -62,7 +62,6 @@ if HF_TOKEN and HF_TOKEN != "MASUKKAN_TOKEN_HUGGING_FACE_ANDA_DI_SINI":
     !wget --header="Authorization: Bearer $HF_TOKEN" -c "https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors?download=true" -O models/vae/ae.safetensors
 else:
     print("⚠️ Token Hugging Face tidak dimasukkan, beberapa model dilewati.")
-
 print("✅ Semua model selesai diunduh.")
 
 # =================================================================
@@ -75,7 +74,8 @@ if not CLOUDFLARE_TUNNEL_TOKEN or CLOUDFLARE_TUNNEL_TOKEN == "MASUKKAN_TOKEN_CLO
   print("⚠️ Harap masukkan Cloudflare Tunnel Token Anda di bagian paling atas!")
 else:
   print("✅ Memulai server ComfyUI...")
-  comfyui_process = subprocess.Popen(["python", "main.py", "--dont-print-server", "--port", "8888", "--highvram"]) # Ganti port ke 8888 untuk menghindari konflik
+  # PENTING: Pastikan port ini sesuai dengan yang ada di dashboard Cloudflare Anda
+  comfyui_process = subprocess.Popen(["python", "main.py", "--dont-print-server", "--port", "8888", "--highvram"])
 
   print("⏳ Menunggu server siap selama 20 detik...")
   time.sleep(20)
