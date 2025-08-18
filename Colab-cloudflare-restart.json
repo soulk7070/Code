@@ -1,0 +1,32 @@
+# =================================================================
+# 🔄 JALANKAN ULANG SERVER DENGAN CLOUDFLARE
+# =================================================================
+import subprocess
+import time
+import os
+
+print("⏳ Menghentikan semua proses yang sedang berjalan...")
+# Matikan proses ComfyUI dan Cloudflared
+!kill $(ps aux | grep '[m]ain.py' | awk '{print $2}') > /dev/null 2>&1
+!kill $(ps aux | grep '[c]loudflared' | awk '{print $2}') > /dev/null 2>&1
+time.sleep(5)
+
+print("✅ Proses lama berhasil dihentikan.")
+print("🚀 Memulai ulang server dan tunnel...")
+
+# Pindah ke direktori yang benar
+%cd /content/ComfyUI
+
+# Jalankan kembali ComfyUI
+comfyui_process = subprocess.Popen(["python", "main.py", "--dont-print-server", "--port", "8188", "--highvram"])
+print("⏳ Menunggu server siap selama 15 detik...")
+time.sleep(15)
+
+# Jalankan kembali Cloudflare Tunnel
+# Variabel CLOUDFLARE_TUNNEL_TOKEN dan YOUR_DOMAIN diambil dari sel pertama
+cloudflared_command = f"cloudflared tunnel --edge-ip-version auto --token {CLOUDFLARE_TUNNEL_TOKEN} run"
+cloudflared_process = subprocess.Popen(cloudflared_command.split(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+time.sleep(10)
+
+print("🎉 Server berhasil dijalankan ulang! 🎉")
+print(f"🔗 Akses kembali melalui domain Anda: https://{YOUR_DOMAIN}")
