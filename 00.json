@@ -1,101 +1,26 @@
-#@title 🚀 A1111 + JuggernautXL v9 Rundiffusion Photo 2 + VAE + ngrok (1-click)
-#@markdown 1) Isi token ngrok kamu di bawah, lalu jalankan cell ini sekali saja.
-NGROK_TOKEN = "MASUKKAN_TOKEN_NGROK_DI_SINI"  #@param {type:"string"}
+# =================================================================
+# 🚀 Jalankan ulang ComfyUI + Cloudflare Tunnel di Colab
+# =================================================================
 
-import os, subprocess, sys, time, textwrap
+import subprocess, os, signal, time
 
-def sh(cmd):
-    print(f"\n$ {cmd}")
-    code = subprocess.call(cmd, shell=True, executable="/bin/bash")
-    if code != 0:
-        print(f"⚠️ Perintah exit code: {code}")
-    return code
+# 🔑 Ganti token ini dengan Cloudflare Tunnel Token yang BENAR
+CLOUDFLARE_TUNNEL_TOKEN = "MASUKKAN_TOKEN_TUNNEL_ANDA_DI_SINI"
 
-# 0) Update & deps
-sh("apt -y update -qq && apt -y install -qq aria2")
-sh("pip -q install pyngrok xformers==0.0.22.post7")
+# Hentikan proses lama (kalau masih ada)
+!pkill -f cloudflared || echo "tidak ada cloudflared lama"
+!pkill -f "python main.py" || echo "tidak ada comfyui lama"
 
-# 1) Clone A1111
-if not os.path.exists("/content/stable-diffusion-webui"):
-    sh("git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git /content/stable-diffusion-webui")
-os.chdir("/content/stable-diffusion-webui")
+# Jalankan ComfyUI di background
+comfy_cmd = "python /content/comfyui/main.py --listen 0.0.0.0 --port 8188"
+comfy_proc = subprocess.Popen(comfy_cmd.split(), stdout=open("/content/comfyui.log","w"), stderr=subprocess.STDOUT)
 
-# 2) Folder model & VAE
-sh("mkdir -p /content/stable-diffusion-webui/models/Stable-diffusion")
-sh("mkdir -p /content/stable-diffusion-webui/models/VAE")
+time.sleep(10)  # tunggu beberapa detik biar ComfyUI siap
 
-# 3) Download MODEL (JuggernautXL v9 Rundiffusion Photo 2, SDXL)
-MODEL_PATH = "/content/stable-diffusion-webui/models/Stable-diffusion/juggernautXL_v9Rundiffusionphoto2.safetensors"
-if not os.path.exists(MODEL_PATH):
-    sh(
-        "aria2c -x16 -s16 -o juggernautXL_v9Rundiffusionphoto2.safetensors "
-        "'https://civitai.com/api/download/models/348913?type=Model&format=SafeTensor&size=full&fp=fp16' "
-        "-d /content/stable-diffusion-webui/models/Stable-diffusion"
-    )
-else:
-    print("✅ Model sudah ada, lewati download.")
+# Jalankan Cloudflare Tunnel
+cloudflare_cmd = f"./cloudflared-linux-amd64 tunnel --no-autoupdate run --token {CLOUDFLARE_TUNNEL_TOKEN}"
+cloudflare_proc = subprocess.Popen(cloudflare_cmd.split(), stdout=open("/content/cloudflared.log","w"), stderr=subprocess.STDOUT)
 
-# 4) Download VAE (SDXL VAE FP16 FIX)
-VAE_PATH = "/content/stable-diffusion-webui/models/VAE/sdxl_vae.safetensors"
-if not os.path.exists(VAE_PATH):
-    sh(
-        "aria2c -x16 -s16 -o sdxl_vae.safetensors "
-        "https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl_vae.safetensors "
-        "-d /content/stable-diffusion-webui/models/VAE"
-    )
-else:
-    print("✅ VAE sudah ada, lewati download.")
-
-# 5) Siapkan argumen launch A1111
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-os.environ["COMMANDLINE_ARGS"] = (
-    "--xformers "
-    "--enable-insecure-extension-access "
-    "--no-half-vae "          # aman untuk SDXL VAE fp16 fix
-    "--opt-sdp-attention "
-    "--listen --port 7860"
-)
-
-# 6) Jalankan A1111 di background
-print("\n▶️ Menjalankan Stable Diffusion WebUI…")
-webui_log = open("/content/webui.log", "w")
-proc = subprocess.Popen(
-    [sys.executable, "launch.py"],
-    stdout=webui_log, stderr=webui_log, cwd="/content/stable-diffusion-webui"
-)
-
-# 7) Tunggu server siap (cek port 7860)
-import socket
-def wait_port(host="127.0.0.1", port=7860, timeout=180):
-    t0 = time.time()
-    while time.time() - t0 < timeout:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(2)
-        try:
-            s.connect((host, port))
-            s.close()
-            return True
-        except:
-            time.sleep(2)
-    return False
-
-ready = wait_port()
-if not ready:
-    print("⚠️ WebUI belum siap dalam 3 menit, lanjut buka ngrok tetap… (cek /content/webui.log jika perlu)")
-
-# 8) Buka ngrok
-from pyngrok import ngrok
-if NGROK_TOKEN and NGROK_TOKEN != "MASUKKAN_TOKEN_NGROK_DI_SINI":
-    try:
-        ngrok.set_auth_token(NGROK_TOKEN)
-        public_url = ngrok.connect(7860)
-        print("\n🔗 Akses Stable Diffusion WebUI (AUTOMATIC1111):")
-        print(public_url)
-        print("\n📝 Catatan:")
-        print("- Pilih checkpoint: juggernautXL_v9Rundiffusionphoto2.safetensors")
-        print("- VAE: sdxl_vae.safetensors (otomatis terdeteksi), jika perlu pilih di Settings → SD VAE.")
-        print("- Log server: /content/webui.log")
-    except Exception as e:
-        print(f"❌ Gagal membuka ngrok: {e}\nPastikan token benar.")
-else:
-    print("⚠️ NGROK_TOKEN kosong. Edit variabel di atas lalu jalankan ulang cell ini untuk mendapatkan URL publik.")
+print("✅ ComfyUI & Cloudflare Tunnel dijalankan ulang")
+print("📜 Log ComfyUI: /content/comfyui.log")
+print("📜 Log Cloudflare: /content/cloudflared.log")
