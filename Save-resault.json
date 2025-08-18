@@ -1,0 +1,15 @@
+from google.colab import drive
+drive.mount('/content/drive')
+
+
+
+
+
+
+import shutil
+
+src = '/content/ComfyUI/output'  # folder output di Colab
+dst = '/content/drive/MyDrive/ComfyUI_Results'  # folder tujuan di Drive
+
+shutil.copytree(src, dst, dirs_exist_ok=True)  # dirs_exist_ok=True supaya bisa overwrite
+print("Folder output berhasil disalin ke Google Drive:", dst)
