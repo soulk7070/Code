@@ -1,0 +1,92 @@
+# =================================================================
+# 📝 1. MASUKKAN TOKEN DAN DOMAIN ANDA
+# =================================================================
+# Dapatkan dari dashboard Cloudflare Zero Trust > Networks > Tunnels
+CLOUDFLARE_TUNNEL_TOKEN = "MASUKKAN_TOKEN_CLOUDFLARE_ANDA_DI_SINI"
+
+# Domain yang Anda konfigurasi di Cloudflare
+# Contoh: "comfy.domain-anda.com"
+YOUR_DOMAIN = "MASUKKAN_NAMA_DOMAIN_ANDA_DI_SINI"
+
+# Dapatkan dari: https://huggingface.co/settings/tokens
+HF_TOKEN = "MASUKKAN_TOKEN_HUGGING_FACE_ANDA_DI_SINI"
+
+# =================================================================
+# 🚀 2. INSTALASI COMFYUI, DEPENDENSI & CUSTOM NODES
+# =================================================================
+print("⏳ Memulai instalasi ComfyUI dan dependensi...")
+!apt -y update -qq
+!pip install -q xformers
+
+# Install Cloudflared
+!wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared
+!chmod +x /usr/local/bin/cloudflared
+
+# Clone ComfyUI dan setup dasar
+import os
+%cd /content
+if not os.path.isdir("ComfyUI"):
+  !git clone https://github.com/comfyanonymous/ComfyUI.git
+%cd ComfyUI
+!pip install -r requirements.txt
+
+# Install Custom Nodes
+print("⏳ Menginstal Custom Nodes...")
+if not os.path.isdir("custom_nodes/ComfyUI-Manager"):
+  !git clone https://github.com/ltdrdata/ComfyUI-Manager.git custom_nodes/ComfyUI-Manager
+if not os.path.isdir("custom_nodes/ComfyUI-Crystools"):
+  !git clone https://github.com/crystian/ComfyUI-Crystools.git custom_nodes/ComfyUI-Crystools
+
+# Install dependensi untuk Crystools
+!pip install deepdiff piexif py-cpuinfo pynvml
+print("✅ Instalasi selesai.")
+
+# =================================================================
+# 📦 3. DOWNLOAD SEMUA MODEL YANG DIBUTUHKAN
+# =================================================================
+print("⏳ Memulai proses unduh model...")
+# Menambahkan direktori models/vae
+!mkdir -p models/diffusion_models models/clip models/upscale_models models/vae
+
+# --- Model yang tidak butuh token ---
+print("Mengunduh FLUX & CLIP GGUF Models...")
+!wget -c "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q4_0.gguf?download=true" -O models/diffusion_models/flux1-dev-Q4_0.gguf
+!wget -c "https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q5_K_M.gguf?download=true" -O models/clip/t5-v1_1-xxl-encoder-Q5_K_M.gguf
+!wget -c "https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q4_K_S.gguf?download=true" -O models/clip/t5-v1_1-xxl-encoder-Q4_K_S.gguf
+
+# --- Model yang butuh token HF ---
+if HF_TOKEN and HF_TOKEN != "MASUKKAN_TOKEN_HUGGING_FACE_ANDA_DI_SINI":
+    os.environ['HF_TOKEN'] = HF_TOKEN
+    print("Mengunduh model yang memerlukan token (CLIP-L, Upscaler, & VAE)...")
+    !wget --header="Authorization: Bearer $HF_TOKEN" -c "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors?download=true" -O models/clip/clip_l.safetensors
+    !wget --header="Authorization: Bearer $HF_TOKEN" -c "https://huggingface.co/Akumetsu971/SD_Anime_Futuristic_Armor/resolve/main/4x_NMKD-Siax_200k.pth?download=true" -O models/upscale_models/4x_NMKD-Siax_200k.pth
+    # <-- VAE DITAMBAHKAN DI SINI
+    !wget --header="Authorization: Bearer $HF_TOKEN" -c "https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors?download=true" -O models/vae/ae.safetensors
+else:
+    print("⚠️ Token Hugging Face tidak dimasukkan, beberapa model dilewati.")
+
+print("✅ Semua model selesai diunduh.")
+
+# =================================================================
+# 🌐 4. JALANKAN COMFYUI & CLOUDFLARE TUNNEL
+# =================================================================
+import subprocess
+import time
+
+if not CLOUDFLARE_TUNNEL_TOKEN or CLOUDFLARE_TUNNEL_TOKEN == "MASUKKAN_TOKEN_CLOUDFLARE_ANDA_DI_SINI":
+  print("⚠️ Harap masukkan Cloudflare Tunnel Token Anda di bagian paling atas!")
+else:
+  print("✅ Memulai server ComfyUI...")
+  comfyui_process = subprocess.Popen(["python", "main.py", "--dont-print-server", "--port", "8188", "--highvram"])
+
+  print("⏳ Menunggu server siap selama 20 detik...")
+  time.sleep(20)
+
+  print(f"✅ Menghubungkan ke domain Anda melalui Cloudflare Tunnel...")
+  cloudflared_command = f"cloudflared tunnel --edge-ip-version auto --token {CLOUDFLARE_TUNNEL_TOKEN} run"
+  cloudflared_process = subprocess.Popen(cloudflared_command.split(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+  time.sleep(10)
+
+  print("🎉 ComfyUI Siap Digunakan! 🎉")
+  print(f"🔗 Akses melalui domain pribadi Anda: https://{YOUR_DOMAIN}")
+
