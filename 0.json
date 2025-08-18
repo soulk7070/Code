@@ -1,122 +1,115 @@
 # ==============================
-# 📦 SETUP + DOWNLOAD + RUN
+# 📦 COMFYUI SETUP + DOWNLOAD + RUN (COLAB-SAFE)
 # ==============================
-# TODO: isi variabel ini sebelum run
+# ▶️ TODO: isi dulu
 CLOUDFLARE_TUNNEL_TOKEN = "ISI_TOKEN_TUNNEL_CLOUDFLARE_KAMU"
-YOUR_DOMAIN = "comfy.domainkamu.com"   # opsional, hanya untuk info cetak
-HF_TOKEN = "ISI_TOKEN_HUGGINGFACE_BILA_PERLU"  # boleh kosong; beberapa link HF publik
+YOUR_DOMAIN = "comfy.ruangjiwa.online"  # opsional, info saja
+HF_TOKEN = "ISI_TOKEN_HUGGINGFACE_BILA_PERLU"  # boleh kosong
 
-INSTALL_MANAGER = True  # Pasang ComfyUI-Manager agar mudah install custom nodes
-
-import os, sys, subprocess, textwrap, shutil, time
+import os, sys, subprocess, textwrap, time, shutil
 
 BASE = "/content"
 COMFY = f"{BASE}/ComfyUI"
-PY = sys.executable
 PORT = 8188
+PY = sys.executable
 CLOUDFLARED_BIN = f"{BASE}/cloudflared-linux-amd64"
 
-def run(cmd):
+def sh(cmd):
     print("→", cmd)
     p = subprocess.run(cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     print(p.stdout)
 
-# 1) Dependensi ringan + cloudflared
-run("apt -y update -qq")
+# 0) Update & cloudflared binary
+sh("apt -y update -qq")
 if not os.path.exists(CLOUDFLARED_BIN):
-    run(f"wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O {CLOUDFLARED_BIN}")
-    run(f"chmod +x {CLOUDFLARED_BIN}")
-
-# 2) Clone ComfyUI (jika belum)
-if not os.path.isdir(COMFY):
-    run(f"git clone -q https://github.com/comfyanonymous/ComfyUI {COMFY}")
+    sh(f"wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O {CLOUDFLARED_BIN}")
+    sh(f"chmod +x {CLOUDFLARED_BIN}")
 else:
-    print("✔ ComfyUI sudah ada, skip clone.")
+    print("✔ cloudflared sudah ada")
 
-# 3) (Opsional) ComfyUI-Manager
-if INSTALL_MANAGER:
-    mgr = f"{COMFY}/custom_nodes/ComfyUI-Manager"
-    if not os.path.isdir(mgr):
-        run(f"git clone -q https://github.com/ltdrdata/ComfyUI-Manager {mgr}")
-    else:
-        print("✔ ComfyUI-Manager sudah ada.")
+# 1) Clone ComfyUI
+if not os.path.isdir(COMFY):
+    sh(f"git clone -q https://github.com/comfyanonymous/ComfyUI {COMFY}")
+else:
+    print("✔ ComfyUI sudah ada")
 
-# 4) Custom Node: ComfyUI-Crystools
+# 2) Pasang ComfyUI-Manager (biar gampang tambah custom nodes)
+mgr = f"{COMFY}/custom_nodes/ComfyUI-Manager"
+if not os.path.isdir(mgr):
+    sh(f"git clone -q https://github.com/ltdrdata/ComfyUI-Manager {mgr}")
+else:
+    print("✔ ComfyUI-Manager sudah ada")
+
+# 3) Pasang custom node: Crystools
 crys = f"{COMFY}/custom_nodes/ComfyUI-Crystools"
 if not os.path.isdir(crys):
-    run(f"cd {COMFY}/custom_nodes && git clone https://github.com/crystian/ComfyUI-Crystools.git")
+    sh(f"cd {COMFY}/custom_nodes && git clone https://github.com/crystian/ComfyUI-Crystools.git")
 else:
-    print("✔ ComfyUI-Crystools sudah ada.")
+    print("✔ ComfyUI-Crystools sudah ada")
 
-# 5) Pip packages untuk Crystools
-run(f"{PY} -m pip -q install --upgrade pip")
-run(f"{PY} -m pip -q install deepdiff piexif py-cpuinfo pynvml requests tqdm")
+# 4) Dependencies (Fix 'torchsde' missing)
+sh(f"{PY} -m pip -q install --upgrade pip")
+sh(f"{PY} -m pip -q install -r {COMFY}/requirements.txt")
+sh(f"{PY} -m pip -q install torchsde==0.2.5 deepdiff piexif py-cpuinfo pynvml requests tqdm")
+# opsional buat T4 Colab
+sh(f"{PY} -m pip -q install xformers triton || true")
 
-# 6) Buat folder model yang dibutuhkan
-paths = {
-    "diffusion_models": f"{COMFY}/models/diffusion_models",
-    "clip":             f"{COMFY}/models/clip",
-    "vae":              f"{COMFY}/models/vae",
-    "upscale_models":   f"{COMFY}/models/upscale_models",
-}
-for p in paths.values():
-    os.makedirs(p, exist_ok=True)
+# 5) Folder models
+for sub in ["diffusion_models","clip","vae","upscale_models"]:
+    os.makedirs(f"{COMFY}/models/{sub}", exist_ok=True)
 
-# 7) Download MODELS (sesuai listmu)
-# — Flux dev (GGUF)
-run(f"wget -q --show-progress -O '{paths['diffusion_models']}/flux1-dev-Q4_0.gguf' "
-    "'https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q4_0.gguf?download=true'")
+# 6) Download models (sesuai listmu)
+# FLUX.1 dev (GGUF)
+sh(f"wget -q --show-progress -O '{COMFY}/models/diffusion_models/flux1-dev-Q4_0.gguf' "
+   "'https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q4_0.gguf?download=true'")
 
-# — T5 encoders (GGUF)
-run(f"wget -q --show-progress -O '{paths['clip']}/t5-v1_1-xxl-encoder-Q5_K_M.gguf' "
-    "'https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q5_K_M.gguf?download=true'")
+# T5 encoders (GGUF)
+sh(f"wget -q --show-progress -O '{COMFY}/models/clip/t5-v1_1-xxl-encoder-Q5_K_M.gguf' "
+   "'https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q5_K_M.gguf?download=true'")
+sh(f"wget -q --show-progress -O '{COMFY}/models/clip/t5-v1_1-xxl-encoder-Q4_K_S.gguf' "
+   "'https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q4_K_S.gguf?download=true'")
 
-run(f"wget -q --show-progress -O '{paths['clip']}/t5-v1_1-xxl-encoder-Q4_K_S.gguf' "
-    "'https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q4_K_S.gguf?download=true'")
+# Dual Clip Loader 2: clip_l.safetensors (pakai header token kalau diisi)
+hdr = f"--header='Authorization: Bearer {HF_TOKEN}'" if HF_TOKEN and len(HF_TOKEN) > 10 else ""
+sh(f"wget -q --show-progress {hdr} -O '{COMFY}/models/clip/clip_l.safetensors' "
+   "'https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors?download=true'")
 
-# — Dual Clip Loader (GGUF) 2 → clip_l.safetensors (pakai HF token jika ada)
-if HF_TOKEN and len(HF_TOKEN) > 10:
-    run(f"wget -q --show-progress --header='Authorization: Bearer {HF_TOKEN}' "
-        f"-O '{paths['clip']}/clip_l.safetensors' "
-        "'https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors?download=true'")
-else:
-    # coba tanpa header (banyak repo publik)
-    run(f"wget -q --show-progress -O '{paths['clip']}/clip_l.safetensors' "
-        "'https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors?download=true'")
+# VAE: ae.safetensors
+sh(f"wget -q --show-progress {hdr} -O '{COMFY}/models/vae/ae.safetensors' "
+   "'https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors?download=true'")
 
-# — VAE → ae.safetensors (pakai HF token jika ada)
-if HF_TOKEN and len(HF_TOKEN) > 10:
-    run(f"wget -q --show-progress --header='Authorization: Bearer {HF_TOKEN}' "
-        f"-O '{paths['vae']}/ae.safetensors' "
-        "'https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors?download=true'")
-else:
-    run(f"wget -q --show-progress -O '{paths['vae']}/ae.safetensors' "
-        "'https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors?download=true'")
+# Upscale model
+sh(f"wget -q --show-progress -O '{COMFY}/models/upscale_models/4x_NMKD-Siax_200k.pth' "
+   "'https://huggingface.co/Akumetsu971/SD_Anime_Futuristic_Armor/resolve/main/4x_NMKD-Siax_200k.pth?download=true'")
 
-# — Upscale model
-run(f"wget -q --show-progress -O '{paths['upscale_models']}/4x_NMKD-Siax_200k.pth' "
-    "'https://huggingface.co/Akumetsu971/SD_Anime_Futuristic_Armor/resolve/main/4x_NMKD-Siax_200k.pth?download=true'")
-
-# 8) Bersihkan proses sisa & RUN ComfyUI
-run("pkill -f 'cloudflared' || true")
-run("pkill -f 'ComfyUI/main.py' || true")
+# 7) Start bersih
+sh("pkill -f 'ComfyUI/main.py' || true")
+sh("pkill -f 'cloudflared' || true")
 os.chdir(COMFY)
-run(f"nohup {PY} main.py --listen 0.0.0.0 --port {PORT} > {BASE}/comfyui.log 2>&1 &")
+sh(f"nohup {PY} main.py --listen 0.0.0.0 --port {PORT} > {BASE}/comfyui.log 2>&1 &")
 
-# 9) Jalankan Cloudflare Tunnel (Named Tunnel token)
+# 8) Cloudflare Tunnel (named token)
 if CLOUDFLARE_TUNNEL_TOKEN and len(CLOUDFLARE_TUNNEL_TOKEN) > 20:
-    run(f"nohup {CLOUDFLARED_BIN} tunnel --no-autoupdate run --token '{CLOUDFLARE_TUNNEL_TOKEN}' > {BASE}/cloudflared.log 2>&1 &")
-    cf_msg = "✅ Cloudflare Tunnel aktif (named tunnel). Pastikan Public Hostname diarahkan ke http://localhost:8188."
+    sh(f"nohup {CLOUDFLARED_BIN} tunnel --no-autoupdate run --token '{CLOUDFLARE_TUNNEL_TOKEN}' > {BASE}/cloudflared.log 2>&1 &")
+    cf_msg = "✅ Tunnel aktif."
 else:
-    cf_msg = "⚠️ CLOUDFLARE_TUNNEL_TOKEN belum diisi/terlalu pendek. Isi token untuk pakai domain Cloudflare."
+    cf_msg = "⚠️ Token tunnel belum diisi/pendek."
+
+# 9) Health check + log
+time.sleep(2)
+print("\n==== HEALTH CHECK ====")
+sh("curl -sI http://127.0.0.1:8188 || true")
+print("\n==== tail comfyui.log ====")
+sh("tail -n 80 /content/comfyui.log || true")
+print("\n==== tail cloudflared.log ====")
+sh("tail -n 60 /content/cloudflared.log || true")
 
 print(textwrap.dedent(f"""
 ==========================
-🎉 SETUP + DOWNLOAD SELESAI
-- ComfyUI     : http://127.0.0.1:{PORT}
-- Domainmu    : https://{YOUR_DOMAIN}  (jika routing di Cloudflare sudah benar)
-- Log ComfyUI : {BASE}/comfyui.log
-- Log CF      : {BASE}/cloudflared.log
+✔ Setup selesai & RUN
+Local  : http://127.0.0.1:{PORT}
+Domain : https://{YOUR_DOMAIN}
+Logs   : /content/comfyui.log | /content/cloudflared.log
 {cf_msg}
 ==========================
 """))
