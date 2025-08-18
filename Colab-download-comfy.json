@@ -1,0 +1,86 @@
+# =================================================================
+# 📝 1. MASUKKAN TOKEN ANDA
+# =================================================================
+# Dapatkan token dari: https://ngrok.com/dashboard
+NGROK_TOKEN = "MASUKKAN_TOKEN_NGROK_ANDA_DI_SINI"
+
+# Dapatkan token dari: https://huggingface.co/settings/tokens
+# Token ini diperlukan untuk mengunduh model upscale
+HF_TOKEN = "MASUKKAN_TOKEN_HUGGING_FACE_ANDA_DI_SINI"
+
+# =================================================================
+# 🚀 2. INSTALASI COMFYUI & DEPENDENSI
+# =================================================================
+print("⏳ Memulai instalasi ComfyUI dan dependensi...")
+!apt -y update -qq
+!pip install -q xformers pyngrok
+
+# Clone ComfyUI jika belum ada
+import os
+if not os.path.isdir("/content/ComfyUI"):
+  !git clone https://github.com/comfyanonymous/ComfyUI.git /content/ComfyUI
+
+# Pindah ke direktori ComfyUI
+%cd /content/ComfyUI
+
+# Install requirements
+!pip install -r requirements.txt
+
+# Install ComfyUI Manager
+if not os.path.isdir("custom_nodes/ComfyUI-Manager"):
+  !git clone https://github.com/ltdrdata/ComfyUI-Manager.git custom_nodes/ComfyUI-Manager
+
+print("✅ Instalasi selesai.")
+
+# =================================================================
+# 📦 3. DOWNLOAD MODEL-MODEL YANG DIMINTA
+# =================================================================
+print("⏳ Memulai proses unduh model...")
+
+# Membuat direktori yang dibutuhkan
+!mkdir -p models/diffusion_models models/clip models/upscale_models
+
+# --- Download FLUX Model ---
+print("Downloading FLUX Model...")
+!wget -c "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q4_0.gguf?download=true" -O models/diffusion_models/flux1-dev-Q4_0.gguf
+
+# --- Download CLIP Models ---
+print("Downloading CLIP Models...")
+!wget -c "https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q5_K_M.gguf?download=true" -O models/clip/t5-v1_1-xxl-encoder-Q5_K_M.gguf
+!wget -c "https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q4_K_S.gguf?download=true" -O models/clip/t5-v1_1-xxl-encoder-Q4_K_S.gguf
+
+# --- Download Upscale Model (memerlukan token HF) ---
+if HF_TOKEN:
+    print("Downloading Upscale Model...")
+    os.environ['HF_TOKEN'] = HF_TOKEN
+    !wget --header="Authorization: Bearer $HF_TOKEN" -c "https://huggingface.co/Akumetsu971/SD_Anime_Futuristic_Armor/resolve/main/4x_NMKD-Siax_200k.pth?download=true" -O models/upscale_models/4x_NMKD-Siax_200k.pth
+else:
+    print("⚠️ Token Hugging Face tidak dimasukkan, proses unduh Upscale Model dilewati.")
+
+print("✅ Semua model selesai diunduh.")
+
+# =================================================================
+# 🌐 4. JALANKAN COMFYUI & NGROK
+# =================================================================
+import subprocess
+import threading
+import time
+from pyngrok import ngrok
+
+if not NGROK_TOKEN:
+  print("⚠️ Harap masukkan Ngrok Auth Token Anda di bagian paling atas!")
+else:
+  ngrok.set_auth_token(NGROK_TOKEN)
+
+  # Jalankan ComfyUI di background
+  print("✅ Memulai server ComfyUI...")
+  process = subprocess.Popen(["python", "main.py", "--dont-print-server", "--port", "8188"])
+
+  # Beri jeda 20 detik agar server ComfyUI benar-benar siap
+  print("⏳ Menunggu server siap selama 20 detik...")
+  time.sleep(20)
+
+  # Buka terowongan ngrok
+  public_url = ngrok.connect(8188)
+  print("🎉 ComfyUI Siap Digunakan! 🎉")
+  print(f"🔗 Akses melalui link ini: {public_url}")
