@@ -61,6 +61,31 @@ done
 echo "✅ ComfyUI is now configured to use Kaggle workspace storage."
 
 
+======================¥π¥π¥•^°ππ¥¥™=°^[]÷✓`=`=€[€[€
+
+# === Kaggle Cell 3 (updated): Download batch upscale folders ===
+pip install -q gdown
+
+# Lokasi input untuk batch upscale
+INPUT_DIR="/kaggle/working/ComfyData/input"
+mkdir -p "$INPUT_DIR"
+
+# Download folder up1
+gdown --folder "https://drive.google.com/drive/folders/1E0Kkh2PA_ZY8RpQXBuTMDIcg5gRZX4Gh?usp=sharing" -O "$INPUT_DIR/up1"
+
+# Download folder up2
+gdown --folder "https://drive.google.com/drive/folders/17xgALN3fbz5O_YDCi8eAHtNnaHiKrbYv?usp=sharing" -O "$INPUT_DIR/up2"
+
+# Download folder up3
+gdown --folder "https://drive.google.com/drive/folders/1_iBbAPHZLukpYijf9vPiBBYqP9_5tSah?usp=sharing" -O "$INPUT_DIR/up3"
+
+echo "✅ Semua folder sudah berhasil diunduh ke $INPUT_DIR"
+ls -R "$INPUT_DIR"
+
+
+
+
+  
 ##################
 
 
