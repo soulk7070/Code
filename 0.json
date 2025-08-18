@@ -1,18 +1,12 @@
 # =================================================================
 # 📝 1. MASUKKAN TOKEN DAN DOMAIN ANDA
 # =================================================================
-# Dapatkan dari dashboard Cloudflare Zero Trust > Networks > Tunnels
 CLOUDFLARE_TUNNEL_TOKEN = "MASUKKAN_TOKEN_CLOUDFLARE_ANDA_DI_SINI"
-
-# Domain yang Anda konfigurasi di Cloudflare
-# Contoh: "comfy.domain-anda.com"
 YOUR_DOMAIN = "MASUKKAN_NAMA_DOMAIN_ANDA_DI_SINI"
-
-# Dapatkan dari: https://huggingface.co/settings/tokens
 HF_TOKEN = "MASUKKAN_TOKEN_HUGGING_FACE_ANDA_DI_SINI"
 
 # =================================================================
-# 🚀 2. INSTALASI COMFYUI, DEPENDENSI & CUSTOM NODES (VERSI PERBAIKAN)
+# 🚀 2. INSTALASI (VERSI FINAL DENGAN PERBAIKAN DEPENDENSI)
 # =================================================================
 print("⏳ Memulai instalasi ComfyUI dan dependensi...")
 !apt -y update -qq
@@ -27,13 +21,16 @@ import os
 if not os.path.isdir("ComfyUI"):
   !git clone https://github.com/comfyanonymous/ComfyUI.git
 %cd ComfyUI
-
-# Instal requirements dari ComfyUI TERLEBIH DAHULU
 !pip install -r requirements.txt
 
-# SEKARANG baru instal xformers agar cocok dengan versi torch dari requirements
-print("✅ Menginstal xformers yang kompatibel...")
-!pip install -q xformers # <-- POSISI DIPINDAHKAN KE SINI UNTUK MEMPERBAIKI ERROR
+# =========================================================
+# 🔧 FIX DEPENDENCY CONFLICTS (BAGIAN TERPENTING)
+# =========================================================
+print("🔧 Memperbaiki konflik dengan instalasi ulang torch, torchvision, dan xformers...")
+!pip uninstall -y torch torchvision torchaudio xformers
+!pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+!pip install xformers
+# =========================================================
 
 # Install Custom Nodes
 print("⏳ Menginstal Custom Nodes...")
@@ -41,8 +38,6 @@ if not os.path.isdir("custom_nodes/ComfyUI-Manager"):
   !git clone https://github.com/ltdrdata/ComfyUI-Manager.git custom_nodes/ComfyUI-Manager
 if not os.path.isdir("custom_nodes/ComfyUI-Crystools"):
   !git clone https://github.com/crystian/ComfyUI-Crystools.git custom_nodes/ComfyUI-Crystools
-
-# Install dependensi untuk Crystools
 !pip install deepdiff piexif py-cpuinfo pynvml
 print("✅ Instalasi selesai.")
 
@@ -80,7 +75,7 @@ if not CLOUDFLARE_TUNNEL_TOKEN or CLOUDFLARE_TUNNEL_TOKEN == "MASUKKAN_TOKEN_CLO
   print("⚠️ Harap masukkan Cloudflare Tunnel Token Anda di bagian paling atas!")
 else:
   print("✅ Memulai server ComfyUI...")
-  comfyui_process = subprocess.Popen(["python", "main.py", "--dont-print-server", "--port", "8188", "--highvram"])
+  comfyui_process = subprocess.Popen(["python", "main.py", "--dont-print-server", "--port", "8888", "--highvram"]) # Ganti port ke 8888 untuk menghindari konflik
 
   print("⏳ Menunggu server siap selama 20 detik...")
   time.sleep(20)
